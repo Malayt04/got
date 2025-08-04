@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"crypto/sha1"
 )
 
 
@@ -54,21 +55,18 @@ func readBlogObject(flag string, commitMessage string) {
 
 		filePath := filepath.Join(".git", "objects", folderName, fileName)
 
-		// Check if file exists
 		_, err := os.Stat(filePath)
 		if os.IsNotExist(err) {
 			fmt.Println("Object not found")
 			return
 		}
 
-		// Read compressed content
 		content, err := os.ReadFile(filePath)
 		if err != nil {
 			fmt.Println("Error reading object:", err)
 			return
 		}
 
-		// Decompress using zlib
 		zr, err := zlib.NewReader(bytes.NewReader(content))
 		if err != nil {
 			fmt.Println("Error decompressing object:", err)
@@ -82,7 +80,6 @@ func readBlogObject(flag string, commitMessage string) {
 			return
 		}
 
-		// Split header and body
 		parts := bytes.SplitN(decompressed, []byte{0}, 2)
 		if len(parts) != 2 {
 			fmt.Println("Invalid object format")
@@ -98,6 +95,51 @@ func readBlogObject(flag string, commitMessage string) {
 
 	default:
 		fmt.Println("Unsupported flag")
+	}
+}
+
+func createHashObject(flag string, filePath string) {
+
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		fmt.Println("Error reading file:", err)
+		return
+	}
+
+
+	header := fmt.Sprintf("blob %d\u0000", len(content))
+	store := append([]byte(header), content...)
+
+
+	hash := sha1.Sum(store)
+	hashHex := fmt.Sprintf("%x", hash[:]) 
+
+	fmt.Println(hashHex)
+
+	if flag == "-w" {
+
+		folderName := hashHex[:2]
+		fileName := hashHex[2:]
+
+		folderPath := filepath.Join(".git", "objects", folderName)
+		if err := os.MkdirAll(folderPath, 0777); err != nil {
+			fmt.Println("Error creating folder:", err)
+			return
+		}
+
+		var buf bytes.Buffer
+		writer := zlib.NewWriter(&buf)
+		if _, err := writer.Write(store); err != nil {
+			fmt.Println("Error compressing content:", err)
+			return
+		}
+		writer.Close()
+
+		objectPath := filepath.Join(folderPath, fileName)
+		if err := os.WriteFile(objectPath, buf.Bytes(), 0644); err != nil {
+			fmt.Println("Error writing object file:", err)
+			return
+		}
 	}
 }
 
@@ -117,6 +159,12 @@ func main(){
 	
 	case "cat-file":
 		readBlogObject(args[2], args[3])
+	
+	case "hash-object":
+		if(args[2] != "-w"){
+			createHashObject("", args[2])
+		}
+		createHashObject(args[2], args[3])
 	}
 
 }
