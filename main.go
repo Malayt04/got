@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"compress/zlib"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 )
@@ -38,6 +41,66 @@ func createGitDir() {
 	fmt.Println("Initialized empty Git repository in", gitPath)
 }
 
+func readBlogObject(flag string, commitMessage string) {
+	switch flag {
+	case "-p":
+		if len(commitMessage) < 4 {
+			fmt.Println("Invalid object hash")
+			return
+		}
+
+		folderName := commitMessage[0:2]
+		fileName := commitMessage[2:]
+
+		filePath := filepath.Join(".git", "objects", folderName, fileName)
+
+		// Check if file exists
+		_, err := os.Stat(filePath)
+		if os.IsNotExist(err) {
+			fmt.Println("Object not found")
+			return
+		}
+
+		// Read compressed content
+		content, err := os.ReadFile(filePath)
+		if err != nil {
+			fmt.Println("Error reading object:", err)
+			return
+		}
+
+		// Decompress using zlib
+		zr, err := zlib.NewReader(bytes.NewReader(content))
+		if err != nil {
+			fmt.Println("Error decompressing object:", err)
+			return
+		}
+		defer zr.Close()
+
+		decompressed, err := io.ReadAll(zr)
+		if err != nil {
+			fmt.Println("Error reading decompressed content:", err)
+			return
+		}
+
+		// Split header and body
+		parts := bytes.SplitN(decompressed, []byte{0}, 2)
+		if len(parts) != 2 {
+			fmt.Println("Invalid object format")
+			return
+		}
+
+		header := string(parts[0])
+		body := string(parts[1])
+
+		fmt.Println("Header:", header)
+		fmt.Println()
+		fmt.Print(body)
+
+	default:
+		fmt.Println("Unsupported flag")
+	}
+}
+
 
 func main(){
 	
@@ -52,6 +115,8 @@ func main(){
 	case "init":
 		createGitDir()
 	
+	case "cat-file":
+		readBlogObject(args[2], args[3])
 	}
 
 }
