@@ -143,6 +143,70 @@ func createHashObject(flag string, filePath string) {
 	}
 }
 
+func handleLsTree(flag string, sha string) {
+	folderName := sha[:2]
+	fileName := sha[2:]
+
+	filePath := filepath.Join(".git", "objects", folderName, fileName)
+
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		fmt.Println("Not a valid object name", sha)
+		return
+	}
+
+	zr, err := zlib.NewReader(bytes.NewReader(content))
+	if err != nil {
+		fmt.Println("Error decompressing object:", err)
+		return
+	}
+	defer zr.Close()
+
+	decompressed, err := io.ReadAll(zr)
+	if err != nil {
+		fmt.Println("Error reading decompressed content:", err)
+		return
+	}
+
+	parts := bytes.SplitN(decompressed, []byte{0}, 2)
+	if len(parts) != 2 {
+		fmt.Println("Invalid object format")
+		return
+	}
+
+	header := string(parts[0])
+	body := parts[1]
+
+	if !strings.HasPrefix(header, "tree") {
+		fmt.Println("Not a tree object:", header)
+		return
+	}
+
+	i := 0
+	for i < len(body) {
+		// Extract mode
+		modeEnd := bytes.IndexByte(body[i:], ' ')
+		mode := string(body[i : i+modeEnd])
+		i += modeEnd + 1
+
+		// Extract filename
+		nameEnd := bytes.IndexByte(body[i:], 0)
+		filename := string(body[i : i+nameEnd])
+		i += nameEnd + 1
+
+		// Extract SHA (20 bytes)
+		if i+20 > len(body) {
+			fmt.Println("Unexpected end of object while reading SHA")
+			return
+		}
+		shaBytes := body[i : i+20]
+		sha := fmt.Sprintf("%x", shaBytes)
+		i += 20
+
+		fmt.Printf("%s %s %s\n", mode, "blob/tree", filename, sha)
+	}
+}
+
 
 func main(){
 	
@@ -165,6 +229,12 @@ func main(){
 			createHashObject("", args[2])
 		}
 		createHashObject(args[2], args[3])
+
+	case "ls-Tree":
+		if(len(args) < 4){
+			handleLsTree("", args[2])
+		}
+		handleLsTree(args[2], args[3])
 	}
 
 }
